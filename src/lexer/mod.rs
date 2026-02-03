@@ -9,6 +9,8 @@ pub enum LexError {
     UnexpectedChar(char),
     #[error("unclosed string")]
     UnclosedString,
+    #[error("invalid escape sequence")]
+    InvalidEscapeSequence,
 }
 
 pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
@@ -45,7 +47,7 @@ pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
                         'n' => string_buf.push('\n'),
                         't' => string_buf.push('\t'),
                         'r' => string_buf.push('\r'),
-                        c => string_buf.push(c),
+                        _ => return Err(LexError::InvalidEscapeSequence),
                     }
                 } else {
                     string_buf.push(chars[i]);

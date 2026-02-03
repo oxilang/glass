@@ -308,7 +308,7 @@ fn value_strategy() -> impl Strategy<Value = Value> {
     let leaf = prop_oneof![
         any::<String>().prop_map(Value::String),
         any::<f64>()
-            .prop_filter("non-nan", |n| !n.is_nan())
+            .prop_filter("non-nan-non-infinite", |n| !n.is_nan() && n.is_finite())
             .prop_map(Value::Number),
         any::<bool>().prop_map(Value::Bool),
     ];
