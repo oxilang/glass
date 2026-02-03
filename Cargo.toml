@@ -6,3 +6,7 @@ edition = "2024"
 [dependencies]
 thin-vec = "0.2.14"
 thiserror = "2.0.18"
+
+[lib]
+name = "glass"
+path = "src/lib.rs"
