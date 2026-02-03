@@ -47,6 +47,21 @@ pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
                         'n' => string_buf.push('\n'),
                         't' => string_buf.push('\t'),
                         'r' => string_buf.push('\r'),
+                        'x' => {
+                            i += 1;
+                            if i + 1 >= chars.len() {
+                                return Err(LexError::InvalidEscapeSequence);
+                            }
+                            let hex1 = chars[i];
+                            let hex2 = chars[i + 1];
+                            if !hex1.is_ascii_hexdigit() || !hex2.is_ascii_hexdigit() {
+                                return Err(LexError::InvalidEscapeSequence);
+                            }
+                            let hex_str = format!("{}{}", hex1, hex2);
+                            let byte_value = u8::from_str_radix(&hex_str, 16).unwrap();
+                            string_buf.push(byte_value as char);
+                            i += 1;
+                        }
                         _ => return Err(LexError::InvalidEscapeSequence),
                     }
                 } else {

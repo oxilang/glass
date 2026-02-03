@@ -166,6 +166,101 @@ fn parses_escaped_strings() {
 }
 
 #[test]
+fn parses_hex_escape_sequences() {
+    let input = r#"
+        root {
+            hex_lower "\x41\x42\x43",
+            hex_upper "\x7a\x78\x79",
+            hex_mixed "A\x30\x31\x32Z",
+            hex_nul "\x00",
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![
+            ("hex_lower".into(), Value::String("ABC".to_string())),
+            ("hex_upper".into(), Value::String("zxy".to_string())),
+            ("hex_mixed".into(), Value::String("A012Z".to_string())),
+            ("hex_nul".into(), Value::String("\0".to_string())),
+        ])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn hex_escape_mixed_with_other_escapes() {
+    let input = r#"
+        root {
+            mixed "hello\x41world\n",
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![(
+            "mixed".into(),
+            Value::String("helloAworld\n".to_string())
+        ),])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn invalid_hex_escape_missing_chars() {
+    let input = r#"
+        root {
+            bad "\x",
+        },
+    "#;
+
+    let result: Result<Value, _> = from_str(input);
+    assert!(result.is_err());
+}
+
+#[test]
+fn invalid_hex_escape_single_char() {
+    let input = r#"
+        root {
+            bad "\x4",
+        },
+    "#;
+
+    let result: Result<Value, _> = from_str(input);
+    assert!(result.is_err());
+}
+
+#[test]
+fn invalid_hex_escape_non_hex_chars() {
+    let input = r#"
+        root {
+            bad "\xGG",
+        },
+    "#;
+
+    let result: Result<Value, _> = from_str(input);
+    assert!(result.is_err());
+}
+
+#[test]
+fn invalid_hex_escape_partial_hex() {
+    let input = r#"
+        root {
+            bad "\x1G",
+        },
+    "#;
+
+    let result: Result<Value, _> = from_str(input);
+    assert!(result.is_err());
+}
+
+#[test]
 fn parses_empty_collections() {
     let input = r#"
         root {
