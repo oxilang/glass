@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::{ast::Value, lexer::Token};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum ParseError {
     #[error("unexpected token: `{0}`")]
     UnexpectedToken(Token),

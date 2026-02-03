@@ -3,7 +3,7 @@ pub use token::Token;
 
 mod token;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum LexError {
     #[error("unexpected character: `{0}")]
     UnexpectedChar(char),
