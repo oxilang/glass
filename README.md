@@ -1,6 +1,6 @@
 # glass
 
-Simple JSON-like language based on the format created for [void](https://github.com/septechx/void).
+Simple JSON-like format based on the format created for [void](https://github.com/septechx/void)'s tree storage files.
 
 ## Example
 

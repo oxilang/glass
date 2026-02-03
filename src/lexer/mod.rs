@@ -1,5 +1,5 @@
 use thiserror::Error;
-use token::Token;
+pub use token::Token;
 
 mod token;
 
@@ -81,7 +81,11 @@ pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
                 i += 1;
             }
 
-            tokens.push(Token::Key(key_buf));
+            match key_buf.as_str() {
+                "true" => tokens.push(Token::True),
+                "false" => tokens.push(Token::False),
+                _ => tokens.push(Token::Key(key_buf)),
+            }
             continue;
         }
 
