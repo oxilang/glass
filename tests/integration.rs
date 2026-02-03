@@ -93,6 +93,127 @@ fn parses_array_example() {
     assert_eq!(ast, expected);
 }
 
+#[test]
+fn parses_booleans() {
+    let input = r#"
+        root {
+            is_true true,
+            is_false false,
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![
+            ("is_true".into(), Value::Bool(true)),
+            ("is_false".into(), Value::Bool(false)),
+        ])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn parses_numbers() {
+    let input = r#"
+        root {
+            integer 123,
+            negative -456,
+            float 12.34,
+            negative_float -56.78,
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![
+            ("integer".into(), Value::Number(123.0)),
+            ("negative".into(), Value::Number(-456.0)),
+            ("float".into(), Value::Number(12.34)),
+            ("negative_float".into(), Value::Number(-56.78)),
+        ])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn parses_escaped_strings() {
+    let input = r#"
+        root {
+            escaped "line1\nline2",
+            quoted "\"quoted\"",
+            backslash "\\",
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![
+            ("escaped".into(), Value::String("line1\nline2".to_string())),
+            ("quoted".into(), Value::String("\"quoted\"".to_string())),
+            ("backslash".into(), Value::String("\\".to_string())),
+        ])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn parses_empty_collections() {
+    let input = r#"
+        root {
+            empty_map {},
+            empty_array [],
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![
+            ("empty_map".into(), Value::Map(thin_vec![])),
+            ("empty_array".into(), Value::Array(thin_vec![])),
+        ])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
+#[test]
+fn parses_mixed_array() {
+    let input = r#"
+        root {
+            mixed [1, "two", true, [], {},],
+        },
+    "#;
+
+    let ast: Value = from_str(input).unwrap();
+
+    let expected = Value::Map(thin_vec![(
+        "root".into(),
+        Value::Map(thin_vec![(
+            "mixed".into(),
+            Value::Array(thin_vec![
+                Value::Number(1.0),
+                Value::String("two".to_string()),
+                Value::Bool(true),
+                Value::Array(thin_vec![]),
+                Value::Map(thin_vec![]),
+            ])
+        ),])
+    )]);
+
+    assert_eq!(ast, expected);
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Person {
     name: String,
