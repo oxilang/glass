@@ -29,8 +29,27 @@ pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
         if c == '"' {
             let mut string_buf = String::new();
             i += 1;
-            while i < chars.len() && chars[i] != '"' {
-                string_buf.push(chars[i]);
+            while i < chars.len() {
+                if chars[i] == '"' {
+                    break;
+                }
+
+                if chars[i] == '\\' {
+                    i += 1;
+                    if i >= chars.len() {
+                        return Err(LexError::UnclosedString);
+                    }
+                    match chars[i] {
+                        '"' => string_buf.push('"'),
+                        '\\' => string_buf.push('\\'),
+                        'n' => string_buf.push('\n'),
+                        't' => string_buf.push('\t'),
+                        'r' => string_buf.push('\r'),
+                        c => string_buf.push(c),
+                    }
+                } else {
+                    string_buf.push(chars[i]);
+                }
                 i += 1;
             }
             if i >= chars.len() {
