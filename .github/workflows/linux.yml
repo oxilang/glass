@@ -1,0 +1,31 @@
+name: Linux CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: sudo apt-get install -y just
+
+      - name: Run tests
+        run: just test
+
+      - name: Run lint
+        run: just lint
+
+      - name: Check formatting
+        run: cargo fmt -- --check
