@@ -9,6 +9,8 @@ pub enum LexError {
     UnexpectedChar(char),
     #[error("unclosed string")]
     UnclosedString,
+    #[error("invalid escape sequence")]
+    InvalidEscapeSequence,
 }
 
 pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
@@ -29,8 +31,42 @@ pub fn tokenize(file_content: String) -> Result<Vec<Token>, LexError> {
         if c == '"' {
             let mut string_buf = String::new();
             i += 1;
-            while i < chars.len() && chars[i] != '"' {
-                string_buf.push(chars[i]);
+            while i < chars.len() {
+                if chars[i] == '"' {
+                    break;
+                }
+
+                if chars[i] == '\\' {
+                    i += 1;
+                    if i >= chars.len() {
+                        return Err(LexError::UnclosedString);
+                    }
+                    match chars[i] {
+                        '"' => string_buf.push('"'),
+                        '\\' => string_buf.push('\\'),
+                        'n' => string_buf.push('\n'),
+                        't' => string_buf.push('\t'),
+                        'r' => string_buf.push('\r'),
+                        'x' => {
+                            i += 1;
+                            if i + 1 >= chars.len() {
+                                return Err(LexError::InvalidEscapeSequence);
+                            }
+                            let hex1 = chars[i];
+                            let hex2 = chars[i + 1];
+                            if !hex1.is_ascii_hexdigit() || !hex2.is_ascii_hexdigit() {
+                                return Err(LexError::InvalidEscapeSequence);
+                            }
+                            let hex_str = format!("{}{}", hex1, hex2);
+                            let byte_value = u8::from_str_radix(&hex_str, 16).unwrap();
+                            string_buf.push(byte_value as char);
+                            i += 1;
+                        }
+                        _ => return Err(LexError::InvalidEscapeSequence),
+                    }
+                } else {
+                    string_buf.push(chars[i]);
+                }
                 i += 1;
             }
             if i >= chars.len() {

@@ -100,7 +100,19 @@ impl ser::Serializer for &mut Serializer {
 
     fn serialize_str(self, v: &str) -> Result<()> {
         self.output.push('"');
-        self.output.push_str(v);
+        for c in v.chars() {
+            match c {
+                '"' => self.output.push_str("\\\""),
+                '\\' => self.output.push_str("\\\\"),
+                '\n' => self.output.push_str("\\n"),
+                '\t' => self.output.push_str("\\t"),
+                '\r' => self.output.push_str("\\r"),
+                '\x00'..='\x1f' => {
+                    self.output.push_str(&format!("\\x{:02x}", c as u32));
+                }
+                _ => self.output.push(c),
+            }
+        }
         self.output.push('"');
         Ok(())
     }

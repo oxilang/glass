@@ -8,6 +8,9 @@ thin-vec = "0.2.14"
 thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"] }
 
+[dev-dependencies]
+proptest = "1.6.0"
+
 [lib]
 name = "glass"
 path = "src/lib.rs"
