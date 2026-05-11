@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 #![allow(unsafe_op_in_unsafe_fn)]
-#![allow(clippy::missing_safety_doc)]
 
 use crate::ast::Value;
 use crate::de;
@@ -231,6 +230,11 @@ fn strlen(s: *const c_char) -> usize {
     }
 }
 
+/// # Safety
+///
+/// - `input` may be null (returns an error result). If non-null, it must point to a valid
+///   null-terminated C string.
+/// - The caller owns the returned `CResult` and must free it via [`glass_result_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
     if input.is_null() {
@@ -266,6 +270,11 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
     }
 }
 
+/// # Safety
+///
+/// - `value` may be null (returns an error result). If non-null, it must point to a valid,
+///   properly initialized `CValue`.
+/// - The caller owns the returned `CResult` and must free it via [`glass_result_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
     if value.is_null() {
@@ -295,51 +304,82 @@ pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
     }
 }
 
+/// # Safety
+///
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Bool`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_bool(ptr: *const CValue) -> bool {
     (*ptr).data.bool_val
 }
 
+/// # Safety
+///
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Number`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_number(ptr: *const CValue) -> f64 {
     (*ptr).data.number_val
 }
 
+/// # Safety
+///
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `String`. The returned
+/// pointer is valid until the owning [`CResult`] is freed via [`glass_result_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_string(ptr: *const CValue) -> *const c_char {
     (*ptr).data.string_val
 }
 
+/// # Safety
+///
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Array`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_array(ptr: *const CValue) -> *const CValueArray {
     (*ptr).data.string_val as *const CValueArray
 }
 
+/// # Safety
+///
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Map`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_map(ptr: *const CValue) -> *const CValueMap {
     (*ptr).data.string_val as *const CValueMap
 }
 
+/// # Safety
+///
+/// `ptr` must be non-null and point to a valid `CValue`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_kind(ptr: *const CValue) -> CValueKind {
     (*ptr).kind
 }
 
+/// # Safety
+///
+/// `arr` must be non-null and point to a valid `CValueArray`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_array_len(arr: *const CValueArray) -> usize {
     (*arr).len
 }
 
+/// # Safety
+///
+/// `arr` must be non-null and point to a valid `CValueArray`. `index` must be less than `arr.len`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_array_get(arr: *const CValueArray, index: usize) -> *const CValue {
     (*arr).data.add(index)
 }
 
+/// # Safety
+///
+/// `map` must be non-null and point to a valid `CValueMap`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_len(map: *const CValueMap) -> usize {
     (*map).len
 }
 
+/// # Safety
+///
+/// `map` must be non-null and point to a valid `CValueMap`. `index` must be less than `map.len`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_get(
     map: *const CValueMap,
@@ -348,21 +388,35 @@ pub unsafe extern "C" fn glass_map_get(
     &*(*map).entries.add(index)
 }
 
+/// # Safety
+///
+/// `entry` must be non-null and point to a valid `CValueMapEntry`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_entry_key(entry: *const CValueMapEntry) -> *const c_char {
     (*entry).key
 }
 
+/// # Safety
+///
+/// `entry` must be non-null and point to a valid `CValueMapEntry`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_entry_value(entry: *const CValueMapEntry) -> *const CValue {
     &(*entry).value
 }
 
+/// # Safety
+///
+/// `res` must be non-null and point to a valid `CResult`. The returned pointer is valid until
+/// the result is freed via [`glass_result_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_error_message(res: *const CResult) -> *const c_char {
     (*res).payload
 }
 
+/// # Safety
+///
+/// `res` must be non-null and point to a valid `CResult`. When `error_code` is 0, the returned
+/// pointer is valid until the result is freed via [`glass_result_free`]; otherwise returns null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValue {
     if (*res).error_code != 0 {
@@ -425,6 +479,11 @@ fn free_cvalue(ptr: *mut CValue) {
     }
 }
 
+/// # Safety
+///
+/// - `res` may be null (no-op). If non-null, it must point to a `CResult` previously returned by
+///   [`glass_parse`] or [`glass_serialize`] and not yet freed. After calling this function the
+///   pointer is invalidated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_free(res: *mut CResult) {
     if !res.is_null() {
