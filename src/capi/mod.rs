@@ -6,7 +6,7 @@ use crate::Result;
 use crate::ast::Value;
 use crate::de;
 use crate::ser;
-use std::alloc::{Layout, alloc};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
@@ -370,9 +370,61 @@ pub unsafe extern "C" fn glass_result_error_code(res: *const CResult) -> i32 {
     (*res).error_code
 }
 
+fn free_cvalue(ptr: *mut CValue) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        match (*ptr).kind {
+            CValueKind::String => {
+                deallocate_string((*ptr).data.string_val);
+            }
+            CValueKind::Array => {
+                let array_ptr = (*ptr).data.string_val as *mut CValueArray;
+                let len = (*array_ptr).len;
+                let data_ptr = (*array_ptr).data;
+                for i in 0..len {
+                    free_cvalue(data_ptr.add(i));
+                }
+                let layout = Layout::from_size_align(
+                    size_of::<CValueArray>() + len * std::mem::size_of::<CValue>(),
+                    align_of::<CValueArray>(),
+                )
+                .unwrap();
+                dealloc(array_ptr as *mut u8, layout);
+            }
+            CValueKind::Map => {
+                let map_ptr = (*ptr).data.string_val as *mut CValueMap;
+                let len = (*map_ptr).len;
+                let entries_ptr = (*map_ptr).entries;
+                for i in 0..len {
+                    let entry_ptr = entries_ptr.add(i);
+                    deallocate_string((*entry_ptr).key);
+                    free_cvalue(&mut (*entry_ptr).value);
+                }
+                let layout = Layout::from_size_align(
+                    size_of::<CValueMap>() + len * std::mem::size_of::<CValueMapEntry>(),
+                    align_of::<CValueMap>(),
+                )
+                .unwrap();
+                dealloc(map_ptr as *mut u8, layout);
+            }
+            _ => {}
+        }
+        dealloc(ptr as *mut u8, Layout::new::<CValue>());
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_free(res: *mut CResult) {
     if !res.is_null() {
+        let error_code = (*res).error_code;
+        if error_code == 0 {
+            let value_ptr = (*res).error_message as *mut CValue;
+            free_cvalue(value_ptr);
+        } else {
+            deallocate_string((*res).error_message);
+        }
         let _ = Box::from_raw(res);
     }
 }
