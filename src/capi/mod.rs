@@ -5,10 +5,10 @@ use crate::ast::Value;
 use crate::de;
 use crate::ser;
 use std::alloc::{Layout, alloc, dealloc};
+use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
-use std::slice;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -204,9 +204,7 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
             CValueKind::Number => Value::Number((*ptr).data.number_val),
             CValueKind::String => {
                 let c_str = (*ptr).data.string_val;
-                let len = strlen(c_str);
-                let slice = slice::from_raw_parts(c_str as *const u8, len);
-                Value::String(String::from_utf8_unchecked(slice.to_vec()))
+                Value::String(CStr::from_ptr(c_str).to_string_lossy().to_string())
             }
             CValueKind::Array => {
                 let array_ptr = (*ptr).data.array_val;
@@ -224,26 +222,15 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
                 let mut vec = thin_vec::ThinVec::with_capacity(len);
                 for i in 0..len {
                     let entry = &*(*map_ptr).entries.add(i);
-                    let key_len = strlen(entry.key);
-                    let key_slice = slice::from_raw_parts(entry.key as *const u8, key_len);
-                    let key = Box::from(String::from_utf8_unchecked(key_slice.to_vec()));
+                    let key = Box::from(CStr::from_ptr(entry.key).to_string_lossy().to_string());
                     let value = cvalue_to_value(&entry.value);
                     vec.push((key, value));
                 }
                 Value::Map(vec)
             }
-            CValueKind::Null => Value::String("null".to_string()),
+            // Serializing null is unsuported, return a string to avoid panicking
+            CValueKind::Null => Value::String("<null>".to_string()),
         }
-    }
-}
-
-fn strlen(s: *const c_char) -> usize {
-    unsafe {
-        let mut len = 0;
-        while *s.add(len) != 0 {
-            len += 1;
-        }
-        len
     }
 }
 
@@ -266,9 +253,8 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
     }
 
     let input_str = unsafe {
-        let len = strlen(input);
-        let slice = slice::from_raw_parts(input as *const u8, len);
-        String::from_utf8_unchecked(slice.to_vec())
+        let slice = CStr::from_ptr(input);
+        slice.to_string_lossy().to_string()
     };
 
     match de::from_str::<Value>(&input_str) {
@@ -339,17 +325,25 @@ pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
 
 /// # Safety
 ///
-/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Bool`.
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Bool`. Returns false if
+/// ptr is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_bool(ptr: *const CValue) -> bool {
+    if ptr.is_null() {
+        return false;
+    }
     (*ptr).data.bool_val
 }
 
 /// # Safety
 ///
-/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Number`.
+/// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Number`. Returns f64::MAX
+/// if ptr is nuul.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_number(ptr: *const CValue) -> f64 {
+    if ptr.is_null() {
+        return f64::MAX;
+    }
     (*ptr).data.number_val
 }
 
@@ -359,6 +353,9 @@ pub unsafe extern "C" fn glass_value_get_number(ptr: *const CValue) -> f64 {
 /// pointer is valid until the owning [`CResult`] is freed via [`glass_result_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_string(ptr: *const CValue) -> *const c_char {
+    if ptr.is_null() {
+        return std::ptr::null();
+    }
     (*ptr).data.string_val
 }
 
@@ -367,6 +364,9 @@ pub unsafe extern "C" fn glass_value_get_string(ptr: *const CValue) -> *const c_
 /// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Array`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_array(ptr: *const CValue) -> *const CValueArray {
+    if ptr.is_null() {
+        return std::ptr::null();
+    }
     (*ptr).data.string_val as *const CValueArray
 }
 
@@ -375,6 +375,9 @@ pub unsafe extern "C" fn glass_value_get_array(ptr: *const CValue) -> *const CVa
 /// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Map`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_map(ptr: *const CValue) -> *const CValueMap {
+    if ptr.is_null() {
+        return std::ptr::null();
+    }
     (*ptr).data.string_val as *const CValueMap
 }
 
@@ -383,14 +386,20 @@ pub unsafe extern "C" fn glass_value_get_map(ptr: *const CValue) -> *const CValu
 /// `ptr` must be non-null and point to a valid `CValue`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_kind(ptr: *const CValue) -> CValueKind {
+    if ptr.is_null() {
+        return CValueKind::Null;
+    }
     (*ptr).kind
 }
 
 /// # Safety
 ///
-/// `arr` must be non-null and point to a valid `CValueArray`.
+/// `arr` must be non-null and point to a valid `CValueArray`. Returns usize::MAX if arr is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_array_len(arr: *const CValueArray) -> usize {
+    if arr.is_null() {
+        return usize::MAX;
+    }
     (*arr).len
 }
 
@@ -399,14 +408,20 @@ pub unsafe extern "C" fn glass_array_len(arr: *const CValueArray) -> usize {
 /// `arr` must be non-null and point to a valid `CValueArray`. `index` must be less than `arr.len`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_array_get(arr: *const CValueArray, index: usize) -> *const CValue {
+    if arr.is_null() || index >= (*arr).len {
+        return std::ptr::null();
+    }
     (*arr).data.add(index)
 }
 
 /// # Safety
 ///
-/// `map` must be non-null and point to a valid `CValueMap`.
+/// `map` must be non-null and point to a valid `CValueMap`. Returns usize::MAX if map is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_len(map: *const CValueMap) -> usize {
+    if map.is_null() {
+        return usize::MAX;
+    }
     (*map).len
 }
 
@@ -418,6 +433,9 @@ pub unsafe extern "C" fn glass_map_get(
     map: *const CValueMap,
     index: usize,
 ) -> *const CValueMapEntry {
+    if map.is_null() || index >= (*map).len {
+        return std::ptr::null();
+    }
     &*(*map).entries.add(index)
 }
 
@@ -426,6 +444,9 @@ pub unsafe extern "C" fn glass_map_get(
 /// `entry` must be non-null and point to a valid `CValueMapEntry`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_entry_key(entry: *const CValueMapEntry) -> *const c_char {
+    if entry.is_null() {
+        return std::ptr::null();
+    }
     (*entry).key
 }
 
@@ -434,6 +455,9 @@ pub unsafe extern "C" fn glass_map_entry_key(entry: *const CValueMapEntry) -> *c
 /// `entry` must be non-null and point to a valid `CValueMapEntry`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_map_entry_value(entry: *const CValueMapEntry) -> *const CValue {
+    if entry.is_null() {
+        return std::ptr::null();
+    }
     &(*entry).value
 }
 

@@ -1,8 +1,10 @@
 #ifndef GLASS_H
 #define GLASS_H
 
+#include <float.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,39 +65,52 @@ typedef struct {
 
 /* Parse a glass string. Returns a GlassResult that must be freed with
    glass_result_free. input may be NULL (returns error result). If non-NULL,
-   must be null-terminated. */
+   must be null-terminated. The caller owns the returned GlassResult. */
 GlassResult *glass_parse(const char *input);
 /* Serialize a GlassValue to glass. Returns a GlassResult that must be freed
    with glass_result_free. value may be NULL (returns error result). If
-   non-NULL, must point to a valid GlassValue. */
+   non-NULL, must point to a properly initialized GlassValue.
+   The caller owns the returned GlassResult. */
 GlassResult *glass_serialize(const GlassValue *value);
 
-/* ptr must be non-NULL and point to a valid GlassValue. */
+/* ptr must be non-NULL and point to a valid GlassValue. Returns GLASS_NULL if
+   ptr is NULL. */
 GlassValueKind glass_value_get_kind(const GlassValue *ptr);
-/* ptr must be non-NULL, valid, and kind must be GLASS_BOOL. */
+/* ptr must be non-NULL, valid, and kind must be GLASS_BOOL.
+   Returns false if ptr is NULL. */
 int glass_value_get_bool(const GlassValue *ptr);
-/* ptr must be non-NULL, valid, and kind must be GLASS_NUMBER. */
+/* ptr must be non-NULL, valid, and kind must be GLASS_NUMBER.
+   Returns DBL_MAX if ptr is NULL. */
 double glass_value_get_number(const GlassValue *ptr);
 /* ptr must be non-NULL, valid, and kind must be GLASS_STRING.
-   Returned pointer is valid until the owning GlassResult is freed. */
+   Returned pointer is valid until the owning GlassResult is freed.
+   Returns NULL if ptr is NULL. */
 const char *glass_value_get_string(const GlassValue *ptr);
-/* ptr must be non-NULL, valid, and kind must be GLASS_ARRAY. */
+/* ptr must be non-NULL, valid, and kind must be GLASS_ARRAY.
+   Returns NULL if ptr is NULL. */
 const GlassArray *glass_value_get_array(const GlassValue *ptr);
-/* ptr must be non-NULL, valid, and kind must be GLASS_MAP. */
+/* ptr must be non-NULL, valid, and kind must be GLASS_MAP.
+   Returns NULL if ptr is NULL. */
 const GlassMap *glass_value_get_map(const GlassValue *ptr);
 
-/* arr must be non-NULL and point to a valid GlassArray. */
+/* arr must be non-NULL and point to a valid GlassArray. Returns SIZE_MAX if
+   arr is NULL. */
 size_t glass_array_len(const GlassArray *arr);
-/* arr must be non-NULL and valid; index must be < arr->len. */
+/* arr must be non-NULL and valid; index must be < arr->len.
+   Returns NULL if arr is NULL or index out of bounds. */
 const GlassValue *glass_array_get(const GlassArray *arr, size_t index);
 
-/* map must be non-NULL and point to a valid GlassMap. */
+/* map must be non-NULL and point to a valid GlassMap. Returns SIZE_MAX if
+   map is NULL. */
 size_t glass_map_len(const GlassMap *map);
-/* map must be non-NULL and valid; index must be < map->len. */
+/* map must be non-NULL and valid; index must be < map->len.
+   Returns NULL if map is NULL or index out of bounds. */
 const GlassMapEntry *glass_map_get(const GlassMap *map, size_t index);
-/* entry must be non-NULL and point to a valid GlassMapEntry. */
+/* entry must be non-NULL and point to a valid GlassMapEntry.
+   Returns NULL if entry is NULL. */
 const char *glass_map_entry_key(const GlassMapEntry *entry);
-/* entry must be non-NULL and point to a valid GlassMapEntry. */
+/* entry must be non-NULL and point to a valid GlassMapEntry.
+   Returns NULL if entry is NULL. */
 const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 
 /* res must be non-NULL and valid. Returned pointer is valid until
