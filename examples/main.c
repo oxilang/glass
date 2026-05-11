@@ -99,9 +99,9 @@ int main(void) {
   printf("=== Serializing back ===\n");
   GlassResult *ser_result = glass_serialize(value);
   if (ser_result->error_code != 0) {
-    printf("Serialize error: %s\n", ser_result->payload);
+    printf("Serialize error: %s\n", glass_result_error_message(ser_result));
   } else {
-    printf("%s\n", ser_result->payload);
+    printf("%s\n", glass_result_serialized(ser_result));
   }
 
   glass_result_free(ser_result);

@@ -43,9 +43,22 @@ typedef struct {
   GlassMapEntry *entries;
 } GlassMap;
 
+typedef enum {
+  GLASS_RESULT_PARSE_SUCCESS = 0,
+  GLASS_RESULT_SERIALIZE_SUCCESS = 1,
+  GLASS_RESULT_ERROR = 2,
+} GlassResultKind;
+
+typedef union {
+  GlassValue *value;
+  char *serialized;
+  char *error_message;
+} GlassResultPayload;
+
 typedef struct {
   int error_code;
-  char *payload;
+  GlassResultKind kind;
+  GlassResultPayload payload;
 } GlassResult;
 
 /* Parse a glass string. Returns a GlassResult that must be freed with
@@ -86,11 +99,18 @@ const char *glass_map_entry_key(const GlassMapEntry *entry);
 const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 
 /* res must be non-NULL and valid. Returned pointer is valid until
- * glass_result_free. */
+ * glass_result_free. Returns NULL if kind is not GLASS_RESULT_ERROR. */
 const char *glass_result_error_message(const GlassResult *res);
-/* res must be non-NULL and valid. Returns NULL if error_code != 0.
-   When non-NULL, returned pointer is valid until glass_result_free. */
+/* res must be non-NULL and valid. Returns NULL if kind is not
+   GLASS_RESULT_PARSE_SUCCESS. When non-NULL, returned pointer is valid
+   until glass_result_free. */
 const GlassValue *glass_result_value(const GlassResult *res);
+/* res must be non-NULL and valid. Returned pointer is valid until
+ * glass_result_free. Returns NULL if kind is not
+ * GLASS_RESULT_SERIALIZE_SUCCESS. */
+const char *glass_result_serialized(const GlassResult *res);
+/* res must be non-NULL and valid. Returns the kind of the result. */
+GlassResultKind glass_result_get_kind(const GlassResult *res);
 /* Frees a GlassResult previously returned by glass_parse or glass_serialize.
    res may be NULL (no-op). After this call, the pointer is invalidated. */
 void glass_result_free(GlassResult *res);

@@ -61,9 +61,26 @@ pub struct CValueMapEntry {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+pub enum CResultKind {
+    ParseSuccess = 0,
+    SerializeSuccess = 1,
+    Error = 2,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union CResultPayload {
+    pub value: *mut CValue,
+    pub serialized: *mut c_char,
+    pub error_message: *mut c_char,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
 pub struct CResult {
     pub error_code: i32,
-    pub payload: *mut c_char,
+    pub kind: CResultKind,
+    pub payload: CResultPayload,
 }
 
 fn allocate_string(s: &str) -> *mut c_char {
@@ -240,7 +257,10 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
     if input.is_null() {
         let result = Box::new(CResult {
             error_code: 1,
-            payload: CString::new("null input").unwrap().into_raw(),
+            kind: CResultKind::Error,
+            payload: CResultPayload {
+                error_message: CString::new("null input").unwrap().into_raw(),
+            },
         });
         return Box::into_raw(result);
     }
@@ -256,14 +276,18 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
             let value_ptr = value_to_cvalue(value);
             let result = Box::new(CResult {
                 error_code: 0,
-                payload: value_ptr as *mut c_char,
+                kind: CResultKind::ParseSuccess,
+                payload: CResultPayload { value: value_ptr },
             });
             Box::into_raw(result)
         }
         Err(e) => {
             let result = Box::new(CResult {
                 error_code: 1,
-                payload: CString::new(e.to_string()).unwrap().into_raw(),
+                kind: CResultKind::Error,
+                payload: CResultPayload {
+                    error_message: CString::new(e.to_string()).unwrap().into_raw(),
+                },
             });
             Box::into_raw(result)
         }
@@ -280,7 +304,10 @@ pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
     if value.is_null() {
         let result = Box::new(CResult {
             error_code: 1,
-            payload: CString::new("null value").unwrap().into_raw(),
+            kind: CResultKind::Error,
+            payload: CResultPayload {
+                error_message: CString::new("null value").unwrap().into_raw(),
+            },
         });
         return Box::into_raw(result);
     }
@@ -290,14 +317,20 @@ pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
         Ok(s) => {
             let result = Box::new(CResult {
                 error_code: 0,
-                payload: CString::new(s).unwrap().into_raw(),
+                kind: CResultKind::SerializeSuccess,
+                payload: CResultPayload {
+                    serialized: CString::new(s).unwrap().into_raw(),
+                },
             });
             Box::into_raw(result)
         }
         Err(e) => {
             let result = Box::new(CResult {
                 error_code: 1,
-                payload: CString::new(e.to_string()).unwrap().into_raw(),
+                kind: CResultKind::Error,
+                payload: CResultPayload {
+                    error_message: CString::new(e.to_string()).unwrap().into_raw(),
+                },
             });
             Box::into_raw(result)
         }
@@ -406,23 +439,39 @@ pub unsafe extern "C" fn glass_map_entry_value(entry: *const CValueMapEntry) -> 
 
 /// # Safety
 ///
-/// `res` must be non-null and point to a valid `CResult`. The returned pointer is valid until
-/// the result is freed via [`glass_result_free`].
+/// `res` must be non-null and point to a valid `CResult` whose `kind` is `Error`. The returned
+/// pointer is valid until the result is freed via [`glass_result_free`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_error_message(res: *const CResult) -> *const c_char {
-    (*res).payload
+    if !matches!((*res).kind, CResultKind::Error) {
+        return std::ptr::null();
+    }
+    (*res).payload.error_message
 }
 
 /// # Safety
 ///
-/// `res` must be non-null and point to a valid `CResult`. When `error_code` is 0, the returned
-/// pointer is valid until the result is freed via [`glass_result_free`]; otherwise returns null.
+/// `res` must be non-null and point to a valid `CResult`. When `kind` is `ParseSuccess`, the
+/// returned pointer is valid until the result is freed via [`glass_result_free`]; otherwise
+/// returns null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValue {
-    if (*res).error_code != 0 {
+    if !matches!((*res).kind, CResultKind::ParseSuccess) {
         return std::ptr::null();
     }
-    (*res).payload as *const CValue
+    (*res).payload.value as *const CValue
+}
+
+/// # Safety
+///
+/// `res` must be non-null and point to a valid `CResult` whose `kind` is `SerializeSuccess`. The returned
+/// pointer is valid until the result is freed via [`glass_result_free`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn glass_result_serialized(res: *const CResult) -> *const c_char {
+    if !matches!((*res).kind, CResultKind::SerializeSuccess) {
+        return std::ptr::null();
+    }
+    (*res).payload.serialized
 }
 
 fn free_cvalue_contents(ptr: *mut CValue) {
@@ -481,18 +530,30 @@ fn free_cvalue(ptr: *mut CValue) {
 
 /// # Safety
 ///
+/// `res` must be non-null and point to a valid `CResult`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn glass_result_get_kind(res: *const CResult) -> CResultKind {
+    (*res).kind
+}
+
+/// # Safety
+///
 /// - `res` may be null (no-op). If non-null, it must point to a `CResult` previously returned by
 ///   [`glass_parse`] or [`glass_serialize`] and not yet freed. After calling this function the
 ///   pointer is invalidated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_free(res: *mut CResult) {
     if !res.is_null() {
-        let error_code = (*res).error_code;
-        if error_code == 0 {
-            let value_ptr = (*res).payload as *mut CValue;
-            free_cvalue(value_ptr);
-        } else {
-            deallocate_string((*res).payload);
+        match (*res).kind {
+            CResultKind::ParseSuccess => {
+                free_cvalue((*res).payload.value);
+            }
+            CResultKind::SerializeSuccess => {
+                deallocate_string((*res).payload.serialized);
+            }
+            CResultKind::Error => {
+                deallocate_string((*res).payload.error_message);
+            }
         }
         let _ = Box::from_raw(res);
     }
