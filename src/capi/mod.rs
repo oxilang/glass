@@ -99,12 +99,13 @@ impl CResult {
 
     fn from_des(res: Result<Value>) -> Self {
         match res {
-            Ok(value) => Self {
-                error_code: 0,
-                kind: CResultKind::ParseSuccess,
-                payload: CResultPayload {
-                    value: value_to_cvalue(value),
+            Ok(value) => match value_to_cvalue(value) {
+                Ok(ptr) => Self {
+                    error_code: 0,
+                    kind: CResultKind::ParseSuccess,
+                    payload: CResultPayload { value: ptr },
                 },
+                Err(e) => Self::error(e),
             },
             Err(e) => Self::error(e),
         }
@@ -142,12 +143,29 @@ fn allocate_string(s: &str) -> *mut c_char {
 }
 
 fn deallocate_string(s: *mut c_char) {
+    if s.is_null() {
+        return;
+    }
     unsafe {
         let _ = CString::from_raw(s);
     }
 }
 
-fn write_cvalue_in_place(ptr: *mut CValue, value: Value) {
+fn array_layout(len: usize) -> Result<(Layout, usize)> {
+    let (layout, offset) = Layout::new::<CValueArray>()
+        .extend(Layout::array::<CValue>(len).map_err(|e| Error::CApi(e.to_string()))?)
+        .map_err(|e| Error::CApi(e.to_string()))?;
+    Ok((layout.pad_to_align(), offset))
+}
+
+fn map_layout(len: usize) -> Result<(Layout, usize)> {
+    let (layout, offset) = Layout::new::<CValueMap>()
+        .extend(Layout::array::<CValueMapEntry>(len).map_err(|e| Error::CApi(e.to_string()))?)
+        .map_err(|e| Error::CApi(e.to_string()))?;
+    Ok((layout.pad_to_align(), offset))
+}
+
+fn write_cvalue_in_place(ptr: *mut CValue, value: Value) -> Result<()> {
     unsafe {
         match value {
             Value::Bool(b) => {
@@ -163,45 +181,55 @@ fn write_cvalue_in_place(ptr: *mut CValue, value: Value) {
                 (*ptr).data.string_val = allocate_string(&s);
             }
             Value::Array(arr) => {
-                let array_ptr = allocate_array(arr.len());
-                for (i, item) in arr.into_iter().enumerate() {
-                    write_cvalue_in_place((*array_ptr).data.add(i), item);
-                }
+                let array_ptr = allocate_array(arr.len())?;
                 (*ptr).kind = CValueKind::Array;
                 (*ptr).data.array_val = array_ptr;
+
+                for (i, item) in arr.into_iter().enumerate() {
+                    write_cvalue_in_place((*array_ptr).data.add(i), item)?;
+                }
             }
             Value::Map(map) => {
-                let map_ptr = allocate_map(map.len());
+                let map_ptr = allocate_map(map.len())?;
+                (*ptr).kind = CValueKind::Map;
+                (*ptr).data.map_val = map_ptr;
+
                 for (i, (key, val)) in map.into_iter().enumerate() {
                     let entry_ptr = (*map_ptr).entries.add(i);
                     ptr::write(&mut (*entry_ptr).key, allocate_string(&key));
-                    write_cvalue_in_place(&mut (*entry_ptr).value, val);
+                    write_cvalue_in_place(&mut (*entry_ptr).value, val)?;
                 }
-                (*ptr).kind = CValueKind::Map;
-                (*ptr).data.map_val = map_ptr;
             }
         }
     }
+    Ok(())
 }
 
-fn value_to_cvalue(value: Value) -> *mut CValue {
+fn value_to_cvalue(value: Value) -> Result<*mut CValue> {
     unsafe {
         let layout = Layout::new::<CValue>();
         let ptr = alloc(layout) as *mut CValue;
-        write_cvalue_in_place(ptr, value);
-        ptr
+        if ptr.is_null() {
+            return Err(Error::CApi("out of memory".to_string()));
+        }
+        if let Err(e) = write_cvalue_in_place(ptr, value) {
+            free_cvalue(ptr);
+            return Err(e);
+        }
+        Ok(ptr)
     }
 }
 
-fn allocate_array(len: usize) -> *mut CValueArray {
+fn allocate_array(len: usize) -> Result<*mut CValueArray> {
     unsafe {
-        let data_size = len * size_of::<CValue>();
-        let total_size = size_of::<CValueArray>() + data_size;
-        let layout = Layout::from_size_align(total_size, align_of::<CValueArray>()).unwrap();
+        let (layout, offset) = array_layout(len)?;
         let ptr = alloc(layout) as *mut CValueArray;
+        if ptr.is_null() {
+            return Err(Error::CApi("out of memory".to_string()));
+        }
 
         ptr::write(&mut (*ptr).len, len);
-        let data_ptr = (ptr as *mut u8).add(size_of::<CValueArray>()) as *mut CValue;
+        let data_ptr = (ptr as *mut u8).add(offset) as *mut CValue;
         ptr::write(&mut (*ptr).data, data_ptr);
 
         for i in 0..len {
@@ -217,20 +245,20 @@ fn allocate_array(len: usize) -> *mut CValueArray {
             );
         }
 
-        ptr
+        Ok(ptr)
     }
 }
 
-fn allocate_map(len: usize) -> *mut CValueMap {
+fn allocate_map(len: usize) -> Result<*mut CValueMap> {
     unsafe {
-        let entry_size = size_of::<CValueMapEntry>();
-        let data_size = len * entry_size;
-        let total_size = size_of::<CValueMap>() + data_size;
-        let layout = Layout::from_size_align(total_size, align_of::<CValueMap>()).unwrap();
+        let (layout, offset) = map_layout(len)?;
         let ptr = alloc(layout) as *mut CValueMap;
+        if ptr.is_null() {
+            return Err(Error::CApi("out of memory".to_string()));
+        }
 
         ptr::write(&mut (*ptr).len, len);
-        let entries_ptr = (ptr as *mut u8).add(size_of::<CValueMap>()) as *mut CValueMapEntry;
+        let entries_ptr = (ptr as *mut u8).add(offset) as *mut CValueMapEntry;
         ptr::write(&mut (*ptr).entries, entries_ptr);
 
         for i in 0..len {
@@ -247,7 +275,7 @@ fn allocate_map(len: usize) -> *mut CValueMap {
             );
         }
 
-        ptr
+        Ok(ptr)
     }
 }
 
@@ -283,9 +311,7 @@ fn cvalue_to_value(ptr: *const CValue) -> Result<Value> {
                 Value::Map(vec)
             }
             CValueKind::Null => {
-                return Err(Error::Serde(
-                    "Serializing null is not supported".to_string(),
-                ));
+                return Err(Error::CApi("Serializing null is not supported".to_string()));
             }
         })
     }
@@ -525,11 +551,7 @@ fn free_cvalue_contents(ptr: *mut CValue) {
                 for i in 0..len {
                     free_cvalue_contents(data_ptr.add(i));
                 }
-                let layout = Layout::from_size_align(
-                    size_of::<CValueArray>() + len * size_of::<CValue>(),
-                    align_of::<CValueArray>(),
-                )
-                .unwrap();
+                let (layout, _) = array_layout(len).expect("consistent layout");
                 dealloc(array_ptr as *mut u8, layout);
             }
             CValueKind::Map => {
@@ -544,11 +566,7 @@ fn free_cvalue_contents(ptr: *mut CValue) {
                     deallocate_string((*entry_ptr).key);
                     free_cvalue_contents(&mut (*entry_ptr).value);
                 }
-                let layout = Layout::from_size_align(
-                    size_of::<CValueMap>() + len * size_of::<CValueMapEntry>(),
-                    align_of::<CValueMap>(),
-                )
-                .unwrap();
+                let (layout, _) = map_layout(len).expect("consistent layout");
                 dealloc(map_ptr as *mut u8, layout);
             }
             _ => {}
