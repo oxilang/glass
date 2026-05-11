@@ -1,6 +1,7 @@
 #ifndef GLASS_H
 #define GLASS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -19,7 +20,7 @@ typedef enum {
 typedef struct {
   GlassValueKind kind;
   union {
-    int bool_val;
+    bool bool_val;
     double number_val;
     char *string_val;
     struct GlassArray *array_val;
@@ -33,7 +34,6 @@ typedef struct {
 } GlassArray;
 
 typedef struct {
-  size_t len;
   char *key;
   GlassValue value;
 } GlassMapEntry;
