@@ -3,6 +3,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum {
   GLASS_NULL = 0,
   GLASS_BOOL = 1,
@@ -65,5 +69,9 @@ const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 const char *glass_result_error_message(const GlassResult *res);
 const GlassValue *glass_result_value(const GlassResult *res);
 void glass_result_free(GlassResult *res);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* GLASS_H */
