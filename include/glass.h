@@ -49,7 +49,7 @@ typedef struct {
 } GlassResult;
 
 GlassResult *glass_parse(const char *input);
-GlassResult glass_serialize(const GlassValue *value);
+GlassResult *glass_serialize(const GlassValue *value);
 
 GlassValueKind glass_value_get_kind(const GlassValue *ptr);
 int glass_value_get_bool(const GlassValue *ptr);

@@ -2,7 +2,6 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(clippy::missing_safety_doc)]
 
-use crate::Result;
 use crate::ast::Value;
 use crate::de;
 use crate::ser;
@@ -66,25 +65,6 @@ pub struct CValueMapEntry {
 pub struct CResult {
     pub error_code: i32,
     pub payload: *mut c_char,
-}
-
-impl From<Result<String>> for CResult {
-    fn from(res: Result<String>) -> Self {
-        match res {
-            Ok(s) => {
-                let c_str = CString::new(s).unwrap();
-                let ptr = c_str.into_raw();
-                CResult {
-                    error_code: 0,
-                    payload: ptr,
-                }
-            }
-            Err(e) => CResult {
-                error_code: 1,
-                payload: CString::new(e.to_string()).unwrap().into_raw(),
-            },
-        }
-    }
 }
 
 fn allocate_string(s: &str) -> *mut c_char {
@@ -287,16 +267,32 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> CResult {
+pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
     if value.is_null() {
-        return CResult {
+        let result = Box::new(CResult {
             error_code: 1,
             payload: CString::new("null value").unwrap().into_raw(),
-        };
+        });
+        return Box::into_raw(result);
     }
 
     let rust_value = cvalue_to_value(value);
-    ser::to_string(&rust_value).into()
+    match ser::to_string(&rust_value) {
+        Ok(s) => {
+            let result = Box::new(CResult {
+                error_code: 0,
+                payload: CString::new(s).unwrap().into_raw(),
+            });
+            Box::into_raw(result)
+        }
+        Err(e) => {
+            let result = Box::new(CResult {
+                error_code: 1,
+                payload: CString::new(e.to_string()).unwrap().into_raw(),
+            });
+            Box::into_raw(result)
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
