@@ -5,7 +5,6 @@ pub struct Serializer {
     output: String,
     current_indent: usize,
     indent_size: usize,
-    is_top_level: bool,
 }
 
 pub fn to_string<T>(value: &T) -> Result<String>
@@ -16,7 +15,6 @@ where
         output: String::new(),
         current_indent: 0,
         indent_size: 4,
-        is_top_level: true,
     };
 
     serializer.write_root();
@@ -239,10 +237,7 @@ impl ser::SerializeSeq for &mut Serializer {
         T: ?Sized + Serialize,
     {
         self.write_indent();
-        let was_top_level = self.is_top_level;
-        self.is_top_level = false;
         value.serialize(&mut **self)?;
-        self.is_top_level = was_top_level;
         self.output.push_str(",\n");
         Ok(())
     }
@@ -323,10 +318,7 @@ impl ser::SerializeMap for &mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        let was_top_level = self.is_top_level;
-        self.is_top_level = false;
         value.serialize(&mut **self)?;
-        self.is_top_level = was_top_level;
         self.output.push_str(",\n");
         Ok(())
     }
@@ -350,10 +342,7 @@ impl ser::SerializeStruct for &mut Serializer {
         self.write_indent();
         self.output.push_str(key);
         self.output.push(' ');
-        let was_top_level = self.is_top_level;
-        self.is_top_level = false;
         value.serialize(&mut **self)?;
-        self.is_top_level = was_top_level;
         self.output.push_str(",\n");
         Ok(())
     }
@@ -362,9 +351,6 @@ impl ser::SerializeStruct for &mut Serializer {
         self.current_indent -= 1;
         self.write_indent();
         self.output.push('}');
-        if self.is_top_level {
-            self.output.push_str(",\n");
-        }
         Ok(())
     }
 }

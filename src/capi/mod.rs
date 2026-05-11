@@ -84,7 +84,10 @@ pub struct CResult {
 }
 
 fn allocate_string(s: &str) -> *mut c_char {
-    CString::new(s).unwrap().into_raw()
+    // Strip interior NULs to avoid panicking across the FFI boundary.
+    let mut bytes = s.as_bytes().to_vec();
+    bytes.retain(|&b| b != 0);
+    unsafe { CString::from_vec_unchecked(bytes).into_raw() }
 }
 
 fn deallocate_string(s: *mut c_char) {
@@ -367,7 +370,7 @@ pub unsafe extern "C" fn glass_value_get_array(ptr: *const CValue) -> *const CVa
     if ptr.is_null() {
         return std::ptr::null();
     }
-    (*ptr).data.string_val as *const CValueArray
+    (*ptr).data.array_val
 }
 
 /// # Safety
@@ -378,7 +381,7 @@ pub unsafe extern "C" fn glass_value_get_map(ptr: *const CValue) -> *const CValu
     if ptr.is_null() {
         return std::ptr::null();
     }
-    (*ptr).data.string_val as *const CValueMap
+    (*ptr).data.map_val
 }
 
 /// # Safety
@@ -464,10 +467,11 @@ pub unsafe extern "C" fn glass_map_entry_value(entry: *const CValueMapEntry) -> 
 /// # Safety
 ///
 /// `res` must be non-null and point to a valid `CResult` whose `kind` is `Error`. The returned
-/// pointer is valid until the result is freed via [`glass_result_free`].
+/// pointer is valid until the result is freed via [`glass_result_free`]. Returns null if res is
+/// null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_error_message(res: *const CResult) -> *const c_char {
-    if !matches!((*res).kind, CResultKind::Error) {
+    if res.is_null() || !matches!((*res).kind, CResultKind::Error) {
         return std::ptr::null();
     }
     (*res).payload.error_message
@@ -477,10 +481,10 @@ pub unsafe extern "C" fn glass_result_error_message(res: *const CResult) -> *con
 ///
 /// `res` must be non-null and point to a valid `CResult`. When `kind` is `ParseSuccess`, the
 /// returned pointer is valid until the result is freed via [`glass_result_free`]; otherwise
-/// returns null.
+/// returns null. Returns null if res is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValue {
-    if !matches!((*res).kind, CResultKind::ParseSuccess) {
+    if res.is_null() || !matches!((*res).kind, CResultKind::ParseSuccess) {
         return std::ptr::null();
     }
     (*res).payload.value as *const CValue
@@ -489,10 +493,11 @@ pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValu
 /// # Safety
 ///
 /// `res` must be non-null and point to a valid `CResult` whose `kind` is `SerializeSuccess`. The returned
-/// pointer is valid until the result is freed via [`glass_result_free`].
+/// pointer is valid until the result is freed via [`glass_result_free`]. Returns null if res is
+/// null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_serialized(res: *const CResult) -> *const c_char {
-    if !matches!((*res).kind, CResultKind::SerializeSuccess) {
+    if res.is_null() || !matches!((*res).kind, CResultKind::SerializeSuccess) {
         return std::ptr::null();
     }
     (*res).payload.serialized
@@ -554,9 +559,13 @@ fn free_cvalue(ptr: *mut CValue) {
 
 /// # Safety
 ///
-/// `res` must be non-null and point to a valid `CResult`.
+/// `res` must be non-null and point to a valid `CResult`. Returns CResultKind::Error if res is
+/// null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_get_kind(res: *const CResult) -> CResultKind {
+    if res.is_null() {
+        return CResultKind::Error;
+    }
     (*res).kind
 }
 

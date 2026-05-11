@@ -19,18 +19,21 @@ typedef enum {
   GLASS_MAP = 5
 } GlassValueKind;
 
+typedef struct GlassArray GlassArray;
+typedef struct GlassMap GlassMap;
+
 typedef struct {
   GlassValueKind kind;
   union {
     bool bool_val;
     double number_val;
     char *string_val;
-    struct GlassArray *array_val;
-    struct GlassMap *map_val;
+    GlassArray *array_val;
+    GlassMap *map_val;
   } data;
 } GlassValue;
 
-typedef struct {
+typedef struct GlassArray {
   size_t len;
   GlassValue *data;
 } GlassArray;
@@ -40,7 +43,7 @@ typedef struct {
   GlassValue value;
 } GlassMapEntry;
 
-typedef struct {
+typedef struct GlassMap {
   size_t len;
   GlassMapEntry *entries;
 } GlassMap;
@@ -78,7 +81,7 @@ GlassResult *glass_serialize(const GlassValue *value);
 GlassValueKind glass_value_get_kind(const GlassValue *ptr);
 /* ptr must be non-NULL, valid, and kind must be GLASS_BOOL.
    Returns false if ptr is NULL. */
-int glass_value_get_bool(const GlassValue *ptr);
+bool glass_value_get_bool(const GlassValue *ptr);
 /* ptr must be non-NULL, valid, and kind must be GLASS_NUMBER.
    Returns DBL_MAX if ptr is NULL. */
 double glass_value_get_number(const GlassValue *ptr);
@@ -114,17 +117,19 @@ const char *glass_map_entry_key(const GlassMapEntry *entry);
 const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 
 /* res must be non-NULL and valid. Returned pointer is valid until
- * glass_result_free. Returns NULL if kind is not GLASS_RESULT_ERROR. */
+ * glass_result_free. Returns NULL if res is null kind is not
+ * GLASS_RESULT_ERROR. */
 const char *glass_result_error_message(const GlassResult *res);
-/* res must be non-NULL and valid. Returns NULL if kind is not
+/* res must be non-NULL and valid. Returns NULL if res is null or kind is not
    GLASS_RESULT_PARSE_SUCCESS. When non-NULL, returned pointer is valid
    until glass_result_free. */
 const GlassValue *glass_result_value(const GlassResult *res);
 /* res must be non-NULL and valid. Returned pointer is valid until
- * glass_result_free. Returns NULL if kind is not
+ * glass_result_free. Returns NULL if res is null or kind is not
  * GLASS_RESULT_SERIALIZE_SUCCESS. */
 const char *glass_result_serialized(const GlassResult *res);
-/* res must be non-NULL and valid. Returns the kind of the result. */
+/* res must be non-NULL and valid. Returns the kind of the result. Returns
+ * GLASS_RESULT_ERROR if res is null. */
 GlassResultKind glass_result_get_kind(const GlassResult *res);
 /* Frees a GlassResult previously returned by glass_parse or glass_serialize.
    res may be NULL (no-op). After this call, the pointer is invalidated. */
