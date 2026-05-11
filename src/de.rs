@@ -12,7 +12,23 @@ where
     let tokens = tokenize(s.to_owned())?;
     let value = parse(tokens)?;
 
-    T::deserialize(value)
+    let inner = unwrap_root(value)?;
+    T::deserialize(inner)
+}
+
+fn unwrap_root(value: Value) -> Result<Value> {
+    match value {
+        Value::Map(entries) if entries.len() == 1 => {
+            let (key, inner) = entries.into_iter().next().unwrap();
+            if key.as_ref() == "root" {
+                Ok(inner)
+            } else {
+                Err(Error::Serde(format!("expected root key, got {}", key)))
+            }
+        }
+        Value::Map(_) => Err(Error::Serde("expected single root key".to_owned())),
+        _ => Ok(value),
+    }
 }
 
 impl<'de> Deserializer<'de> for Value {
@@ -233,9 +249,6 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Map(map) if map.len() == 1 && map[0].0.as_ref() == "root" => {
-                map[0].1.clone().deserialize_map(visitor)
-            }
             Value::Map(v) => visitor.visit_map(ValueMap::new(v)),
             _ => Err(Error::Serde(format!("expected map, got {:?}", self))),
         }
@@ -250,12 +263,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        match &self {
-            Value::Map(map) if map.len() == 1 && map[0].0.as_ref() == "root" => {
-                map[0].1.clone().deserialize_map(visitor)
-            }
-            _ => self.deserialize_map(visitor),
-        }
+        self.deserialize_map(visitor)
     }
 
     fn deserialize_enum<V>(

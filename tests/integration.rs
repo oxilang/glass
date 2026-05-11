@@ -14,11 +14,8 @@ fn parses_simple_example() {
     let ast: Value = from_str(input).unwrap();
 
     let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![(
-            "hello".into(),
-            Value::String("world".to_string()),
-        ),])
+        "hello".into(),
+        Value::String("world".to_string()),
     )]);
 
     assert_eq!(ast, expected);
@@ -37,19 +34,16 @@ fn parses_nested_example() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            ("hello".into(), Value::String("world".to_string()),),
-            (
-                "nested".into(),
-                Value::Map(thin_vec![(
-                    "hello".into(),
-                    Value::String("world".to_string()),
-                ),])
-            ),
-        ])
-    )]);
+    let expected = Value::Map(thin_vec![
+        ("hello".into(), Value::String("world".to_string())),
+        (
+            "nested".into(),
+            Value::Map(thin_vec![(
+                "hello".into(),
+                Value::String("world".to_string()),
+            )])
+        ),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -67,28 +61,25 @@ fn parses_array_example() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            (
+    let expected = Value::Map(thin_vec![
+        (
+            "hello".into(),
+            Value::Array(thin_vec![
+                Value::String("world".to_string()),
+                Value::String("foo".to_string()),
+            ]),
+        ),
+        (
+            "nested".into(),
+            Value::Map(thin_vec![(
                 "hello".into(),
                 Value::Array(thin_vec![
                     Value::String("world".to_string()),
                     Value::String("foo".to_string()),
                 ]),
-            ),
-            (
-                "nested".into(),
-                Value::Map(thin_vec![(
-                    "hello".into(),
-                    Value::Array(thin_vec![
-                        Value::String("world".to_string()),
-                        Value::String("foo".to_string()),
-                    ]),
-                ),])
-            ),
-        ])
-    )]);
+            ),])
+        ),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -104,13 +95,10 @@ fn parses_booleans() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            ("is_true".into(), Value::Bool(true)),
-            ("is_false".into(), Value::Bool(false)),
-        ])
-    )]);
+    let expected = Value::Map(thin_vec![
+        ("is_true".into(), Value::Bool(true)),
+        ("is_false".into(), Value::Bool(false)),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -128,15 +116,12 @@ fn parses_numbers() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            ("integer".into(), Value::Number(123.0)),
-            ("negative".into(), Value::Number(-456.0)),
-            ("float".into(), Value::Number(12.34)),
-            ("negative_float".into(), Value::Number(-56.78)),
-        ])
-    )]);
+    let expected = Value::Map(thin_vec![
+        ("integer".into(), Value::Number(123.0)),
+        ("negative".into(), Value::Number(-456.0)),
+        ("float".into(), Value::Number(12.34)),
+        ("negative_float".into(), Value::Number(-56.78)),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -153,14 +138,11 @@ fn parses_escaped_strings() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            ("escaped".into(), Value::String("line1\nline2".to_string())),
-            ("quoted".into(), Value::String("\"quoted\"".to_string())),
-            ("backslash".into(), Value::String("\\".to_string())),
-        ])
-    )]);
+    let expected = Value::Map(thin_vec![
+        ("escaped".into(), Value::String("line1\nline2".to_string())),
+        ("quoted".into(), Value::String("\"quoted\"".to_string())),
+        ("backslash".into(), Value::String("\\".to_string())),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -178,15 +160,12 @@ fn parses_hex_escape_sequences() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            ("hex_lower".into(), Value::String("ABC".to_string())),
-            ("hex_upper".into(), Value::String("zxy".to_string())),
-            ("hex_mixed".into(), Value::String("A012Z".to_string())),
-            ("hex_nul".into(), Value::String("\0".to_string())),
-        ])
-    )]);
+    let expected = Value::Map(thin_vec![
+        ("hex_lower".into(), Value::String("ABC".to_string())),
+        ("hex_upper".into(), Value::String("zxy".to_string())),
+        ("hex_mixed".into(), Value::String("A012Z".to_string())),
+        ("hex_nul".into(), Value::String("\0".to_string())),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -202,11 +181,8 @@ fn hex_escape_mixed_with_other_escapes() {
     let ast: Value = from_str(input).unwrap();
 
     let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![(
-            "mixed".into(),
-            Value::String("helloAworld\n".to_string())
-        ),])
+        "mixed".into(),
+        Value::String("helloAworld\n".to_string())
     )]);
 
     assert_eq!(ast, expected);
@@ -271,13 +247,10 @@ fn parses_empty_collections() {
 
     let ast: Value = from_str(input).unwrap();
 
-    let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![
-            ("empty_map".into(), Value::Map(thin_vec![])),
-            ("empty_array".into(), Value::Array(thin_vec![])),
-        ])
-    )]);
+    let expected = Value::Map(thin_vec![
+        ("empty_map".into(), Value::Map(thin_vec![])),
+        ("empty_array".into(), Value::Array(thin_vec![])),
+    ]);
 
     assert_eq!(ast, expected);
 }
@@ -293,17 +266,14 @@ fn parses_mixed_array() {
     let ast: Value = from_str(input).unwrap();
 
     let expected = Value::Map(thin_vec![(
-        "root".into(),
-        Value::Map(thin_vec![(
-            "mixed".into(),
-            Value::Array(thin_vec![
-                Value::Number(1.0),
-                Value::String("two".to_string()),
-                Value::Bool(true),
-                Value::Array(thin_vec![]),
-                Value::Map(thin_vec![]),
-            ])
-        ),])
+        "mixed".into(),
+        Value::Array(thin_vec![
+            Value::Number(1.0),
+            Value::String("two".to_string()),
+            Value::Bool(true),
+            Value::Array(thin_vec![]),
+            Value::Map(thin_vec![]),
+        ])
     )]);
 
     assert_eq!(ast, expected);
@@ -326,7 +296,6 @@ fn test_serde_roundtrip() {
 
     let serialized = to_string(&person).unwrap();
 
-    assert!(serialized.contains("root {"));
     assert!(serialized.contains("name \"Alice\""));
     assert!(serialized.contains("age 30"));
     assert!(serialized.contains("hobbies ["));
@@ -350,7 +319,7 @@ fn test_value_roundtrip() {
     let serialized = to_string(&wrapped).unwrap();
 
     let deserialized: Value = from_str(&serialized).unwrap();
-    assert_eq!(wrapped, deserialized);
+    assert_eq!(value, deserialized);
 }
 
 #[test]
@@ -437,6 +406,6 @@ proptest! {
         let wrapped = Value::Map(thin_vec![("root".into(), val.clone())]);
         let serialized = to_string(&wrapped).unwrap();
         let deserialized: Value = from_str(&serialized).unwrap();
-        assert_eq!(wrapped, deserialized);
+        assert_eq!(val, deserialized);
     }
 }

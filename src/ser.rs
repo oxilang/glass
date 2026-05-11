@@ -5,8 +5,6 @@ pub struct Serializer {
     output: String,
     current_indent: usize,
     indent_size: usize,
-    is_top_level: bool,
-    has_root_wrapper: bool,
 }
 
 pub fn to_string<T>(value: &T) -> Result<String>
@@ -17,11 +15,11 @@ where
         output: String::new(),
         current_indent: 0,
         indent_size: 4,
-        is_top_level: true,
-        has_root_wrapper: false,
     };
 
+    serializer.write_root();
     value.serialize(&mut serializer)?;
+    serializer.write_sep();
 
     Ok(serializer.output)
 }
@@ -31,6 +29,14 @@ impl Serializer {
         for _ in 0..self.current_indent * self.indent_size {
             self.output.push(' ');
         }
+    }
+
+    pub(crate) fn write_root(&mut self) {
+        self.output.push_str("root ");
+    }
+
+    pub(crate) fn write_sep(&mut self) {
+        self.output.push(',');
     }
 }
 
@@ -206,14 +212,8 @@ impl ser::Serializer for &mut Serializer {
     }
 
     fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
-        if self.is_top_level && !self.has_root_wrapper {
-            self.output.push_str("root {\n");
-            self.current_indent = 1;
-            self.has_root_wrapper = true;
-        } else {
-            self.output.push_str("{\n");
-            self.current_indent += 1;
-        }
+        self.output.push_str("{\n");
+        self.current_indent += 1;
         Ok(self)
     }
 
@@ -237,10 +237,7 @@ impl ser::SerializeSeq for &mut Serializer {
         T: ?Sized + Serialize,
     {
         self.write_indent();
-        let was_top_level = self.is_top_level;
-        self.is_top_level = false;
         value.serialize(&mut **self)?;
-        self.is_top_level = was_top_level;
         self.output.push_str(",\n");
         Ok(())
     }
@@ -321,10 +318,7 @@ impl ser::SerializeMap for &mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        let was_top_level = self.is_top_level;
-        self.is_top_level = false;
         value.serialize(&mut **self)?;
-        self.is_top_level = was_top_level;
         self.output.push_str(",\n");
         Ok(())
     }
@@ -348,10 +342,7 @@ impl ser::SerializeStruct for &mut Serializer {
         self.write_indent();
         self.output.push_str(key);
         self.output.push(' ');
-        let was_top_level = self.is_top_level;
-        self.is_top_level = false;
         value.serialize(&mut **self)?;
-        self.is_top_level = was_top_level;
         self.output.push_str(",\n");
         Ok(())
     }
@@ -360,9 +351,6 @@ impl ser::SerializeStruct for &mut Serializer {
         self.current_indent -= 1;
         self.write_indent();
         self.output.push('}');
-        if self.is_top_level {
-            self.output.push_str(",\n");
-        }
         Ok(())
     }
 }

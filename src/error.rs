@@ -8,6 +8,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum Error {
+    #[error("C API error: {0}")]
+    CApi(String),
     #[error("serde error: {0}")]
     Serde(String),
     #[error("lexer error: {0}")]

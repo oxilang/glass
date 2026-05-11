@@ -14,3 +14,8 @@ proptest = "1.6.0"
 [lib]
 name = "glass"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+capi = []
