@@ -1,3 +1,5 @@
+# Examples
+
 This directory contains examples of glass files and of usage of the C API.
 
 ## Compiling C example

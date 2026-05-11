@@ -18,6 +18,8 @@ typedef struct {
     int bool_val;
     double number_val;
     char *string_val;
+    struct GlassArray *array_val;
+    struct GlassMap *map_val;
   } data;
 } GlassValue;
 
@@ -60,7 +62,6 @@ const GlassMapEntry *glass_map_get(const GlassMap *map, size_t index);
 const char *glass_map_entry_key(const GlassMapEntry *entry);
 const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 
-int glass_result_error_code(const GlassResult *res);
 const char *glass_result_error_message(const GlassResult *res);
 const GlassValue *glass_result_value(const GlassResult *res);
 void glass_result_free(GlassResult *res);

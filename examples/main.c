@@ -84,7 +84,7 @@ int main(void) {
 
   GlassResult *result = glass_parse(input);
 
-  if (glass_result_error_code(result) != 0) {
+  if (result->error_code != 0) {
     printf("Parse error: %s\n", glass_result_error_message(result));
     glass_result_free(result);
     return 1;

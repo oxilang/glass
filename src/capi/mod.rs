@@ -36,6 +36,8 @@ pub union CValueData {
     pub bool_val: bool,
     pub number_val: f64,
     pub string_val: *mut c_char,
+    pub array_val: *mut CValueArray,
+    pub map_val: *mut CValueMap,
 }
 
 #[repr(C)]
@@ -95,11 +97,8 @@ fn deallocate_string(s: *mut c_char) {
     }
 }
 
-fn value_to_cvalue(value: Value) -> *mut CValue {
+fn write_cvalue_in_place(ptr: *mut CValue, value: Value) {
     unsafe {
-        let layout = Layout::new::<CValue>();
-        let ptr = alloc(layout) as *mut CValue;
-
         match value {
             Value::Bool(b) => {
                 (*ptr).kind = CValueKind::Bool;
@@ -116,38 +115,43 @@ fn value_to_cvalue(value: Value) -> *mut CValue {
             Value::Array(arr) => {
                 let array_ptr = allocate_array(arr.len());
                 for (i, item) in arr.into_iter().enumerate() {
-                    let item_ptr = value_to_cvalue(item);
-                    ptr::write(&mut *(*array_ptr).data.add(i), *item_ptr);
+                    write_cvalue_in_place((*array_ptr).data.add(i), item);
                 }
                 (*ptr).kind = CValueKind::Array;
-                (*ptr).data.string_val = array_ptr as *mut c_char;
+                (*ptr).data.array_val = array_ptr;
             }
             Value::Map(map) => {
                 let map_ptr = allocate_map(map.len());
                 for (i, (key, val)) in map.into_iter().enumerate() {
                     let entry_ptr = (*map_ptr).entries.add(i);
                     ptr::write(&mut (*entry_ptr).key, allocate_string(&key));
-                    ptr::write(&mut (*entry_ptr).value, *value_to_cvalue(val));
+                    write_cvalue_in_place(&mut (*entry_ptr).value, val);
                 }
                 (*ptr).kind = CValueKind::Map;
-                (*ptr).data.string_val = map_ptr as *mut c_char;
+                (*ptr).data.map_val = map_ptr;
             }
         }
+    }
+}
 
+fn value_to_cvalue(value: Value) -> *mut CValue {
+    unsafe {
+        let layout = Layout::new::<CValue>();
+        let ptr = alloc(layout) as *mut CValue;
+        write_cvalue_in_place(ptr, value);
         ptr
     }
 }
 
 fn allocate_array(len: usize) -> *mut CValueArray {
     unsafe {
-        let data_size = len * std::mem::size_of::<CValue>();
-        let total_size = std::mem::size_of::<CValueArray>() + data_size;
-        let layout =
-            Layout::from_size_align(total_size, std::mem::align_of::<CValueArray>()).unwrap();
+        let data_size = len * size_of::<CValue>();
+        let total_size = size_of::<CValueArray>() + data_size;
+        let layout = Layout::from_size_align(total_size, align_of::<CValueArray>()).unwrap();
         let ptr = alloc(layout) as *mut CValueArray;
 
         ptr::write(&mut (*ptr).len, len);
-        let data_ptr = (ptr as *mut u8).add(std::mem::size_of::<CValueArray>()) as *mut CValue;
+        let data_ptr = (ptr as *mut u8).add(size_of::<CValueArray>()) as *mut CValue;
         ptr::write(&mut (*ptr).data, data_ptr);
 
         for i in 0..len {
@@ -169,16 +173,14 @@ fn allocate_array(len: usize) -> *mut CValueArray {
 
 fn allocate_map(len: usize) -> *mut CValueMap {
     unsafe {
-        let entry_size = std::mem::size_of::<CValueMapEntry>();
+        let entry_size = size_of::<CValueMapEntry>();
         let data_size = len * entry_size;
-        let total_size = std::mem::size_of::<CValueMap>() + data_size;
-        let layout =
-            Layout::from_size_align(total_size, std::mem::align_of::<CValueMap>()).unwrap();
+        let total_size = size_of::<CValueMap>() + data_size;
+        let layout = Layout::from_size_align(total_size, align_of::<CValueMap>()).unwrap();
         let ptr = alloc(layout) as *mut CValueMap;
 
         ptr::write(&mut (*ptr).len, len);
-        let entries_ptr =
-            (ptr as *mut u8).add(std::mem::size_of::<CValueMap>()) as *mut CValueMapEntry;
+        let entries_ptr = (ptr as *mut u8).add(size_of::<CValueMap>()) as *mut CValueMapEntry;
         ptr::write(&mut (*ptr).entries, entries_ptr);
 
         for i in 0..len {
@@ -211,7 +213,7 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
                 Value::String(String::from_utf8_unchecked(slice.to_vec()))
             }
             CValueKind::Array => {
-                let array_ptr = (*ptr).data.string_val as *const CValueArray;
+                let array_ptr = (*ptr).data.array_val;
                 let len = (*array_ptr).len;
                 let mut vec = thin_vec::ThinVec::with_capacity(len);
                 for i in 0..len {
@@ -221,7 +223,7 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
                 Value::Array(vec)
             }
             CValueKind::Map => {
-                let map_ptr = (*ptr).data.string_val as *const CValueMap;
+                let map_ptr = (*ptr).data.map_val;
                 let len = (*map_ptr).len;
                 let mut vec = thin_vec::ThinVec::with_capacity(len);
                 for i in 0..len {
@@ -366,11 +368,6 @@ pub unsafe extern "C" fn glass_result_error_message(res: *const CResult) -> *con
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn glass_result_error_code(res: *const CResult) -> i32 {
-    (*res).error_code
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValue {
     if (*res).error_code != 0 {
         return std::ptr::null();
@@ -378,7 +375,7 @@ pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValu
     (*res).payload as *const CValue
 }
 
-fn free_cvalue(ptr: *mut CValue) {
+fn free_cvalue_contents(ptr: *mut CValue) {
     if ptr.is_null() {
         return;
     }
@@ -388,30 +385,30 @@ fn free_cvalue(ptr: *mut CValue) {
                 deallocate_string((*ptr).data.string_val);
             }
             CValueKind::Array => {
-                let array_ptr = (*ptr).data.string_val as *mut CValueArray;
+                let array_ptr = (*ptr).data.array_val;
                 let len = (*array_ptr).len;
                 let data_ptr = (*array_ptr).data;
                 for i in 0..len {
-                    free_cvalue(data_ptr.add(i));
+                    free_cvalue_contents(data_ptr.add(i));
                 }
                 let layout = Layout::from_size_align(
-                    size_of::<CValueArray>() + len * std::mem::size_of::<CValue>(),
+                    size_of::<CValueArray>() + len * size_of::<CValue>(),
                     align_of::<CValueArray>(),
                 )
                 .unwrap();
                 dealloc(array_ptr as *mut u8, layout);
             }
             CValueKind::Map => {
-                let map_ptr = (*ptr).data.string_val as *mut CValueMap;
+                let map_ptr = (*ptr).data.map_val;
                 let len = (*map_ptr).len;
                 let entries_ptr = (*map_ptr).entries;
                 for i in 0..len {
                     let entry_ptr = entries_ptr.add(i);
                     deallocate_string((*entry_ptr).key);
-                    free_cvalue(&mut (*entry_ptr).value);
+                    free_cvalue_contents(&mut (*entry_ptr).value);
                 }
                 let layout = Layout::from_size_align(
-                    size_of::<CValueMap>() + len * std::mem::size_of::<CValueMapEntry>(),
+                    size_of::<CValueMap>() + len * size_of::<CValueMapEntry>(),
                     align_of::<CValueMap>(),
                 )
                 .unwrap();
@@ -419,6 +416,15 @@ fn free_cvalue(ptr: *mut CValue) {
             }
             _ => {}
         }
+    }
+}
+
+fn free_cvalue(ptr: *mut CValue) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        free_cvalue_contents(ptr);
         dealloc(ptr as *mut u8, Layout::new::<CValue>());
     }
 }
