@@ -63,7 +63,7 @@ pub struct CValueMapEntry {
 #[derive(Copy, Clone)]
 pub struct CResult {
     pub error_code: i32,
-    pub error_message: *mut c_char,
+    pub payload: *mut c_char,
 }
 
 impl From<Result<String>> for CResult {
@@ -74,12 +74,12 @@ impl From<Result<String>> for CResult {
                 let ptr = c_str.into_raw();
                 CResult {
                     error_code: 0,
-                    error_message: ptr,
+                    payload: ptr,
                 }
             }
             Err(e) => CResult {
                 error_code: 1,
-                error_message: CString::new(e.to_string()).unwrap().into_raw(),
+                payload: CString::new(e.to_string()).unwrap().into_raw(),
             },
         }
     }
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
     if input.is_null() {
         let result = Box::new(CResult {
             error_code: 1,
-            error_message: CString::new("null input").unwrap().into_raw(),
+            payload: CString::new("null input").unwrap().into_raw(),
         });
         return Box::into_raw(result);
     }
@@ -270,14 +270,14 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
             let value_ptr = value_to_cvalue(value);
             let result = Box::new(CResult {
                 error_code: 0,
-                error_message: value_ptr as *mut c_char,
+                payload: value_ptr as *mut c_char,
             });
             Box::into_raw(result)
         }
         Err(e) => {
             let result = Box::new(CResult {
                 error_code: 1,
-                error_message: CString::new(e.to_string()).unwrap().into_raw(),
+                payload: CString::new(e.to_string()).unwrap().into_raw(),
             });
             Box::into_raw(result)
         }
@@ -289,7 +289,7 @@ pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> CResult {
     if value.is_null() {
         return CResult {
             error_code: 1,
-            error_message: CString::new("null value").unwrap().into_raw(),
+            payload: CString::new("null value").unwrap().into_raw(),
         };
     }
 
@@ -362,12 +362,20 @@ pub unsafe extern "C" fn glass_map_entry_value(entry: *const CValueMapEntry) -> 
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_error_message(res: *const CResult) -> *const c_char {
-    (*res).error_message
+    (*res).payload
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_result_error_code(res: *const CResult) -> i32 {
     (*res).error_code
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn glass_result_value(res: *const CResult) -> *const CValue {
+    if (*res).error_code != 0 {
+        return std::ptr::null();
+    }
+    (*res).payload as *const CValue
 }
 
 fn free_cvalue(ptr: *mut CValue) {
@@ -420,10 +428,10 @@ pub unsafe extern "C" fn glass_result_free(res: *mut CResult) {
     if !res.is_null() {
         let error_code = (*res).error_code;
         if error_code == 0 {
-            let value_ptr = (*res).error_message as *mut CValue;
+            let value_ptr = (*res).payload as *mut CValue;
             free_cvalue(value_ptr);
         } else {
-            deallocate_string((*res).error_message);
+            deallocate_string((*res).payload);
         }
         let _ = Box::from_raw(res);
     }

@@ -90,8 +90,7 @@ int main(void) {
     return 1;
   }
 
-  const GlassValue *value =
-      (const GlassValue *)glass_result_error_message(result);
+  const GlassValue *value = glass_result_value(result);
 
   printf("=== Parsed value ===\n");
   print_value(value, 0);
@@ -100,11 +99,11 @@ int main(void) {
   printf("=== Serializing back ===\n");
   GlassResult ser_result = glass_serialize(value);
   if (ser_result.error_code != 0) {
-    printf("Serialize error: %s\n", ser_result.error_message);
-    free(ser_result.error_message);
+    printf("Serialize error: %s\n", ser_result.payload);
+    free(ser_result.payload);
   } else {
-    printf("%s\n", ser_result.error_message);
-    free(ser_result.error_message);
+    printf("%s\n", ser_result.payload);
+    free(ser_result.payload);
   }
 
   glass_result_free(result);

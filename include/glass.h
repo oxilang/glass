@@ -39,7 +39,7 @@ typedef struct {
 
 typedef struct {
   int error_code;
-  char *error_message;
+  char *payload;
 } GlassResult;
 
 GlassResult *glass_parse(const char *input);
@@ -62,6 +62,7 @@ const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 
 int glass_result_error_code(const GlassResult *res);
 const char *glass_result_error_message(const GlassResult *res);
+const GlassValue *glass_result_value(const GlassResult *res);
 void glass_result_free(GlassResult *res);
 
 #endif /* GLASS_H */
