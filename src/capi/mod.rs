@@ -1,9 +1,9 @@
-#![allow(dead_code)]
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use crate::ast::Value;
 use crate::de;
 use crate::ser;
+use crate::{Error, Result};
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -83,6 +83,57 @@ pub struct CResult {
     pub payload: CResultPayload,
 }
 
+impl CResult {
+    fn from_ser(res: Result<String>) -> Self {
+        match res {
+            Ok(s) => Self {
+                error_code: 0,
+                kind: CResultKind::SerializeSuccess,
+                payload: CResultPayload {
+                    serialized: allocate_string(&s),
+                },
+            },
+            Err(e) => Self::error(e),
+        }
+    }
+
+    fn from_des(res: Result<Value>) -> Self {
+        match res {
+            Ok(value) => Self {
+                error_code: 0,
+                kind: CResultKind::ParseSuccess,
+                payload: CResultPayload {
+                    value: value_to_cvalue(value),
+                },
+            },
+            Err(e) => Self::error(e),
+        }
+    }
+
+    #[inline]
+    fn error(e: Error) -> Self {
+        Self {
+            error_code: 1,
+            kind: CResultKind::Error,
+            payload: CResultPayload {
+                error_message: allocate_string(&e.to_string()),
+            },
+        }
+    }
+
+    #[inline]
+    fn null_input() -> Self {
+        Self {
+            error_code: 1,
+            kind: CResultKind::Error,
+            payload: CResultPayload {
+                error_message: allocate_string("null input"),
+            },
+        }
+    }
+}
+
+#[inline]
 fn allocate_string(s: &str) -> *mut c_char {
     // Strip interior NULs to avoid panicking across the FFI boundary.
     let mut bytes = s.as_bytes().to_vec();
@@ -200,9 +251,9 @@ fn allocate_map(len: usize) -> *mut CValueMap {
     }
 }
 
-fn cvalue_to_value(ptr: *const CValue) -> Value {
+fn cvalue_to_value(ptr: *const CValue) -> Result<Value> {
     unsafe {
-        match (*ptr).kind {
+        Ok(match (*ptr).kind {
             CValueKind::Bool => Value::Bool((*ptr).data.bool_val),
             CValueKind::Number => Value::Number((*ptr).data.number_val),
             CValueKind::String => {
@@ -215,7 +266,7 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
                 let mut vec = thin_vec::ThinVec::with_capacity(len);
                 for i in 0..len {
                     let item_ptr = (*array_ptr).data.add(i);
-                    vec.push(cvalue_to_value(item_ptr));
+                    vec.push(cvalue_to_value(item_ptr)?);
                 }
                 Value::Array(vec)
             }
@@ -226,14 +277,17 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
                 for i in 0..len {
                     let entry = &*(*map_ptr).entries.add(i);
                     let key = Box::from(CStr::from_ptr(entry.key).to_string_lossy().to_string());
-                    let value = cvalue_to_value(&entry.value);
+                    let value = cvalue_to_value(&entry.value)?;
                     vec.push((key, value));
                 }
                 Value::Map(vec)
             }
-            // Serializing null is unsuported, return a string to avoid panicking
-            CValueKind::Null => Value::String("<null>".to_string()),
-        }
+            CValueKind::Null => {
+                return Err(Error::Serde(
+                    "Serializing null is not supported".to_string(),
+                ));
+            }
+        })
     }
 }
 
@@ -245,14 +299,7 @@ fn cvalue_to_value(ptr: *const CValue) -> Value {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
     if input.is_null() {
-        let result = Box::new(CResult {
-            error_code: 1,
-            kind: CResultKind::Error,
-            payload: CResultPayload {
-                error_message: CString::new("null input").unwrap().into_raw(),
-            },
-        });
-        return Box::into_raw(result);
+        return Box::into_raw(Box::new(CResult::null_input()));
     }
 
     let input_str = unsafe {
@@ -260,27 +307,7 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
         slice.to_string_lossy().to_string()
     };
 
-    match de::from_str::<Value>(&input_str) {
-        Ok(value) => {
-            let value_ptr = value_to_cvalue(value);
-            let result = Box::new(CResult {
-                error_code: 0,
-                kind: CResultKind::ParseSuccess,
-                payload: CResultPayload { value: value_ptr },
-            });
-            Box::into_raw(result)
-        }
-        Err(e) => {
-            let result = Box::new(CResult {
-                error_code: 1,
-                kind: CResultKind::Error,
-                payload: CResultPayload {
-                    error_message: CString::new(e.to_string()).unwrap().into_raw(),
-                },
-            });
-            Box::into_raw(result)
-        }
-    }
+    Box::into_raw(Box::new(CResult::from_des(de::from_str(&input_str))))
 }
 
 /// # Safety
@@ -291,39 +318,15 @@ pub unsafe extern "C" fn glass_parse(input: *const c_char) -> *mut CResult {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_serialize(value: *const CValue) -> *mut CResult {
     if value.is_null() {
-        let result = Box::new(CResult {
-            error_code: 1,
-            kind: CResultKind::Error,
-            payload: CResultPayload {
-                error_message: CString::new("null value").unwrap().into_raw(),
-            },
-        });
-        return Box::into_raw(result);
+        return Box::into_raw(Box::new(CResult::null_input()));
     }
 
-    let rust_value = cvalue_to_value(value);
-    match ser::to_string(&rust_value) {
-        Ok(s) => {
-            let result = Box::new(CResult {
-                error_code: 0,
-                kind: CResultKind::SerializeSuccess,
-                payload: CResultPayload {
-                    serialized: CString::new(s).unwrap().into_raw(),
-                },
-            });
-            Box::into_raw(result)
-        }
-        Err(e) => {
-            let result = Box::new(CResult {
-                error_code: 1,
-                kind: CResultKind::Error,
-                payload: CResultPayload {
-                    error_message: CString::new(e.to_string()).unwrap().into_raw(),
-                },
-            });
-            Box::into_raw(result)
-        }
-    }
+    let cvalue = match cvalue_to_value(value) {
+        Ok(cvalue) => cvalue,
+        Err(e) => return Box::into_raw(Box::new(CResult::error(e))),
+    };
+
+    Box::into_raw(Box::new(CResult::from_ser(ser::to_string(&cvalue))))
 }
 
 /// # Safety
@@ -341,7 +344,7 @@ pub unsafe extern "C" fn glass_value_get_bool(ptr: *const CValue) -> bool {
 /// # Safety
 ///
 /// `ptr` must be non-null and point to a valid `CValue` whose `kind` is `Number`. Returns f64::MAX
-/// if ptr is nuul.
+/// if ptr is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn glass_value_get_number(ptr: *const CValue) -> f64 {
     if ptr.is_null() {
@@ -514,6 +517,9 @@ fn free_cvalue_contents(ptr: *mut CValue) {
             }
             CValueKind::Array => {
                 let array_ptr = (*ptr).data.array_val;
+                if array_ptr.is_null() {
+                    return;
+                }
                 let len = (*array_ptr).len;
                 let data_ptr = (*array_ptr).data;
                 for i in 0..len {
@@ -528,6 +534,9 @@ fn free_cvalue_contents(ptr: *mut CValue) {
             }
             CValueKind::Map => {
                 let map_ptr = (*ptr).data.map_val;
+                if map_ptr.is_null() {
+                    return;
+                }
                 let len = (*map_ptr).len;
                 let entries_ptr = (*map_ptr).entries;
                 for i in 0..len {

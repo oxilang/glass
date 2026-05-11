@@ -117,7 +117,7 @@ const char *glass_map_entry_key(const GlassMapEntry *entry);
 const GlassValue *glass_map_entry_value(const GlassMapEntry *entry);
 
 /* res must be non-NULL and valid. Returned pointer is valid until
- * glass_result_free. Returns NULL if res is null kind is not
+ * glass_result_free. Returns NULL if res is null or kind is not
  * GLASS_RESULT_ERROR. */
 const char *glass_result_error_message(const GlassResult *res);
 /* res must be non-NULL and valid. Returns NULL if res is null or kind is not

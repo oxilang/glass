@@ -1,5 +1,5 @@
-run:
-  cargo run
+build:
+  cargo build --release --features capi
 
 test:
   cargo test
