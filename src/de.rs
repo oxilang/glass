@@ -249,9 +249,6 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Map(map) if map.len() == 1 && map[0].0.as_ref() == "root" => {
-                map[0].1.clone().deserialize_map(visitor)
-            }
             Value::Map(v) => visitor.visit_map(ValueMap::new(v)),
             _ => Err(Error::Serde(format!("expected map, got {:?}", self))),
         }
@@ -266,12 +263,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        match &self {
-            Value::Map(map) if map.len() == 1 && map[0].0.as_ref() == "root" => {
-                map[0].1.clone().deserialize_map(visitor)
-            }
-            _ => self.deserialize_map(visitor),
-        }
+        self.deserialize_map(visitor)
     }
 
     fn deserialize_enum<V>(
