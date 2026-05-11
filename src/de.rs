@@ -12,7 +12,23 @@ where
     let tokens = tokenize(s.to_owned())?;
     let value = parse(tokens)?;
 
-    T::deserialize(value)
+    let inner = unwrap_root(value)?;
+    T::deserialize(inner)
+}
+
+fn unwrap_root(value: Value) -> Result<Value> {
+    match value {
+        Value::Map(entries) if entries.len() == 1 => {
+            let (key, inner) = entries.into_iter().next().unwrap();
+            if key.as_ref() == "root" {
+                Ok(inner)
+            } else {
+                Err(Error::Serde(format!("expected root key, got {}", key)))
+            }
+        }
+        Value::Map(_) => Err(Error::Serde("expected single root key".to_owned())),
+        _ => Ok(value),
+    }
 }
 
 impl<'de> Deserializer<'de> for Value {

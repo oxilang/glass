@@ -1,7 +1,7 @@
 use thin_vec::ThinVec;
 
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeMap, SerializeSeq, SerializeStruct};
+use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
@@ -21,29 +21,15 @@ impl Serialize for Value {
         S: Serializer,
     {
         match self {
+            Value::Map(map) if map.len() == 1 && map[0].0.as_ref() == "root" => {
+                map[0].1.serialize(serializer)
+            }
             Value::Map(map) => {
-                // Special case: if the map has a single "root" key, serialize as struct
-                if map.len() == 1 && map[0].0.as_ref() == "root" {
-                    if let Value::Map(inner_map) = &map[0].1 {
-                        let keys: Vec<String> =
-                            inner_map.iter().map(|(k, _)| k.to_string()).collect();
-                        let mut struct_ser =
-                            serializer.serialize_struct("root", inner_map.len())?;
-                        for (i, (_k, v)) in inner_map.iter().enumerate() {
-                            let key: &'static str = Box::leak(keys[i].clone().into_boxed_str());
-                            struct_ser.serialize_field(key, v)?;
-                        }
-                        struct_ser.end()
-                    } else {
-                        map[0].1.serialize(serializer)
-                    }
-                } else {
-                    let mut map_ser = serializer.serialize_map(Some(map.len()))?;
-                    for (key, value) in map.iter() {
-                        map_ser.serialize_entry(key.as_ref(), value)?;
-                    }
-                    map_ser.end()
+                let mut map_ser = serializer.serialize_map(Some(map.len()))?;
+                for (key, value) in map.iter() {
+                    map_ser.serialize_entry(key.as_ref(), value)?;
                 }
+                map_ser.end()
             }
             Value::Array(arr) => {
                 let mut seq = serializer.serialize_seq(Some(arr.len()))?;
